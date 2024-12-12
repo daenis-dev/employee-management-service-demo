@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  employee-db:
+    image: postgres:latest
+    container_name: employee-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: changeitdb
+      POSTGRES_DB: employee-service
+    volumes:
+      - ./employee-service/data/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+
+  employee-service:
+    build:
+      context: ./employee-service
+      dockerfile: Dockerfile
+    container_name: employee-service
+    environment:
+      DATABASE_URL: jdbc:postgresql://employee-db:5432/employee-service
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: changeitdb
+      KEYCLOAK_ADMIN_USERNAME: auth-admin
+      KEYCLOAK_ADMIN_PASSWORD: changeit
+    depends_on:
+      - employee-db
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "employee-service", "-h", "employee-db", "-p", "5432"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+
+  auth-db:
+    image: postgres:latest
+    container_name: auth-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: changeitdb
+      POSTGRES_DB: authorization-db
+    ports:
+      - "5433:5432"
+
+  keycloak-server:
+    build:
+      context: ./authorization-server
+      dockerfile: Dockerfile
+    container_name: keycloak-server
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      DB_VENDOR: postgres
+      DB_ADDR: auth-db
+      DB_PORT: 5432
+      DB_DATABASE: authorization-db
+      DB_USER: postgres
+      DB_PASSWORD: changeitdb
+      DATABASE_URL: jdbc:postgresql://auth-db:5433/authorization-db
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: changeitdb
+      KEYCLOAK_ADMIN: auth-admin
+      KEYCLOAK_ADMIN_PASSWORD: changeit
+    depends_on:
+      - auth-db
+    ports:
+      - "9880:9880"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "authorization-db", "-h", "auth-db", "-p", "5433"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+
+  employee-interface:
+    build:
+      context: ./employee-interface
+      dockerfile: Dockerfile
+    container_name: employee-interface
+    ports:
+      - "4200:80"
+
+networks:
+  default:
+    driver: bridge
